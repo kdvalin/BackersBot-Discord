@@ -1,4 +1,4 @@
-FROM python:bullseye
+FROM python:3.6-bullseye
 
 ENV DISCORD_BOT_TOKEN ""
 
@@ -18,7 +18,10 @@ ENV SMTP_USER ""
 ENV SMTP_PASSWD ""
 ENV SMTP_PORT 465
 
-COPY  * /app/
-RUN python3 -m pip install -r /app/requirements.txt
+WORKDIR /app
 
-ENTRYPOINT [ "python3", "/app/main.py" ]
+COPY requirements.txt .
+RUN python3 -m pip install -r requirements.txt
+COPY  * /app/
+
+ENTRYPOINT [ "python3", "main.py" ]
