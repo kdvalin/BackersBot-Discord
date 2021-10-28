@@ -3,12 +3,16 @@
 import discord
 from discord.ext import commands
 import logging
-import requests
-import datetime
+
+import smtplib, ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 import random
 import pymysql
 import re
 import string
+import sys
 
 # Bot Config
 import bot_config
@@ -17,8 +21,7 @@ bot = commands.Bot(command_prefix='.', description='''Backers Verification Bot''
 
 
 def main():
-    logging.basicConfig(filename='{0}{1:%Y%m%d%H%M%S}-BackersBot-Discord.out'.format(bot_config.log_folder,
-                                                                                    datetime.datetime.now()),
+    logging.basicConfig(stream=sys.stdout,
                         level=logging.INFO,
                         format='%(asctime)s: %(levelname)s: %(message)s',
                         datefmt='%Y/%m/%d-%H:%M:%S')
@@ -26,6 +29,41 @@ def main():
     bot.remove_command('help')
     bot.run(bot_config.discord_token)
 
+def sendEmail(toAddr, verifyCode):
+    message = MIMEMultipart("alternative")
+    message["Subject"] = "Mythic Table Kickstarter Discord Verification Code"
+    message["From"] = bot_config.smtp_user
+    message["To"] = toAddr
+
+    message.attach(
+        MIMEText(
+            "Hello Backer!"
+            "This is a confirmation email to verify you as one of our "
+            "backers. In order to confirm you as a backer, please go to Discord "
+            "and send the following message to BackersBot:"
+            ".backer_verify {0} {1}".format(toAddr, verifyCode),
+            "plain"
+        )
+    )
+
+    message.attach(
+        MIMEText(
+            "Hello Backer! <br/><br/>"
+            "This is a confirmation email to verify you as one of our "
+            "backers. In order to confirm you as a backer, please go to Discord "
+            "and send the following message to BackersBot: <br/><br/>"
+            ".backer_verify {0} {1}".format(toAddr, verifyCode),
+            "html"
+        ),
+    )
+
+    ssl_context = ssl.create_default_context()
+
+    with smtplib.SMTP_SSL(bot_config.smtp_host, bot_config.smtp_port, context=ssl_context) as server:
+        server.login(bot_config.smtp_user, bot_config.smtp_passwd)
+        server.send_message(
+            bot_config.smtp_user, toAddr, message.as_string()
+        )
 
 @bot.event
 async def on_ready():
@@ -96,18 +134,7 @@ async def backer_mail(ctx, email: str):
 
                     if token is not None:
                         # Send an email with the token and say the instructions to verify it.
-                        requests.post("https://api.mailgun.net/v2/{0}/messages".format(bot_config.mailgun_host),
-                                      auth=("api", bot_config.mailgun_key),
-                                      data={
-                                          "from": "{0}".format(bot_config.mailgun_email),
-                                          "to": email,
-                                          "subject": "Discord: Email Verification",
-                                          "html": "Hello Backer! <br/><br/>"
-                                                  "This is a confirmation email to verify you as one of our "
-                                                  "backers. In order to confirm you as a backer, please go to Discord "
-                                                  "and send the following message to BackersBot: <br/><br/>"
-                                                  ".backer_verify {0} {1}".format(email, token)
-                                      })
+                        sendEmail(email, token)
 
                         await bot.say("Welcome backer! Just one more step to access the backer-exclusive channels. "
                                       "Please, check your email for the verification code we just sent you (please "
@@ -207,15 +234,6 @@ def check_user_role(author: discord.Member, rolecheck):
         return True
 
     return False
-
-
-def check_url(url):
-    try:
-        resp = requests.head(url)
-    except requests.exceptions.MissingSchema:
-        return False
-    return resp.status_code < 400
-
 
 def valid_email(email):
     return re.match(r"(^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$)", email)
