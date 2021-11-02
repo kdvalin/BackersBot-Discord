@@ -24,3 +24,5 @@ smtp_host = os.environ.get("SMTP_HOST")
 smtp_user = os.environ.get("SMTP_USER")
 smtp_passwd = os.environ.get("SMTP_PASSWD")
 smtp_port = int(os.environ.get("SMTP_PORT"))
+
+is_test = bool(os.environ.get('TEST_MODE'))

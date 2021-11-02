@@ -25,7 +25,7 @@ bot = commands.Bot(command_prefix='.', description='''Backers Verification Bot''
 
 def main():
     logging.basicConfig(stream=sys.stdout,
-                        level=logging.INFO,
+                        level=logging.DEBUG,
                         format='%(asctime)s: %(levelname)s: %(message)s',
                         datefmt='%Y/%m/%d-%H:%M:%S')
 
@@ -64,7 +64,7 @@ def sendEmail(toAddr, verifyCode):
 
     with smtplib.SMTP_SSL(bot_config.smtp_host, bot_config.smtp_port, context=ssl_context) as server:
         server.login(bot_config.smtp_user, bot_config.smtp_passwd)
-        server.send_message(
+        server.sendmail(
             bot_config.smtp_user, toAddr, message.as_string()
         )
 
@@ -101,11 +101,11 @@ async def backer_help(ctx: commands.Context):
 
 
 @bot.command(pass_context=True)
-async def backer_mail(ctx, email: str):
-    log_command(ctx.author(), "backer_mail", email)
+async def backer_mail(ctx: commands.Context, email: str):
+    log_command(ctx.author, "backer_mail", email)
 
     # Only works if we're on a private message
-    if isinstance(ctx.channel(), discord.DMChannel):
+    if isinstance(ctx.channel, discord.DMChannel):
         # Check if email is valid
         if valid_email(email):
             # Check the Database and see if we have the email.
@@ -149,11 +149,12 @@ async def backer_mail(ctx, email: str):
                 cursor.close()
                 mariadb.close()
         else:
-            await bot.send("The email address looks like it's invalid. "
+            await ctx.send("The email address looks like it's invalid. "
                           "Please, make sure you enter a valid email address.")
     else:
-        await ctx.send(ctx.message.author, "That command only works on private message. "
-                                                   "Please send me the command again.")
+        await ctx.message.delete()
+        await ctx.send("{0} That command only works on private message. "
+                        "Please DM the command to me.".format(ctx.author.mention))
 
 
 @bot.command(pass_context=True)
