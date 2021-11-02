@@ -17,7 +17,10 @@ import sys
 # Bot Config
 import bot_config
 
-bot = commands.Bot(command_prefix='.', description='''Backers Verification Bot''')
+intents = discord.Intents.default()
+intents.members = True
+
+bot = commands.Bot(command_prefix='.', description='''Backers Verification Bot''', intents=intents)
 
 
 def main():
@@ -75,8 +78,8 @@ async def on_ready():
 
 # region Backer Roles
 @bot.command(pass_context=True)
-async def backer_help(ctx):
-    log_command(ctx.message.author, "backer_help")
+async def backer_help(ctx: commands.Context):
+    log_command(ctx.author, "backer_help")
 
     msg = "This bot will help you identify yourself as a backer and obtain access to Discord's private channels.\r\r" \
           "In order to start the process, you'll need to know the email you've used to back our project. That would be " \
@@ -84,14 +87,14 @@ async def backer_help(ctx):
           "accounts linked.\r\r" \
           "Send me the following command: \r\r" \
           ".backer_mail email@example.com"
-    if ctx.message.channel.is_private:
-        await bot.say(msg)
+
+    if isinstance(ctx.channel, discord.DMChannel):
+        await ctx.send(msg)
     else:
-        await bot.delete_message(ctx.message)
         try:
-            await bot.send_message(ctx.message.author, msg)
+            await ctx.author.send(msg)
         except discord.errors.Forbidden:
-            await bot.send_message(ctx.message.channel, "{0} you have disabled direct messages "
+            await ctx.send("{0} you have disabled direct messages "
                                                         "from this server members. "
                                                         "Please, allow them temporarily so we can start the process."
                                    .format(ctx.message.author.mention))
@@ -99,10 +102,10 @@ async def backer_help(ctx):
 
 @bot.command(pass_context=True)
 async def backer_mail(ctx, email: str):
-    log_command(ctx.message.author, "backer_mail", email)
+    log_command(ctx.author(), "backer_mail", email)
 
     # Only works if we're on a private message
-    if ctx.message.channel.is_private:
+    if isinstance(ctx.channel(), discord.DMChannel):
         # Check if email is valid
         if valid_email(email):
             # Check the Database and see if we have the email.
@@ -118,7 +121,7 @@ async def backer_mail(ctx, email: str):
 
                     if result is None:
                         # User doesn't exists in the database. Throw an error.
-                        await bot.say("The email address is not registered as a valid backer. "
+                        await ctx.send("The email address is not registered as a valid backer. "
                                       "Please, make sure you've entered the right email.\r\r")
                     elif result["verification_code"] is None:
                         # User hasn't started the verified proccess previously. Generate a new verifiy token.
@@ -136,7 +139,7 @@ async def backer_mail(ctx, email: str):
                         # Send an email with the token and say the instructions to verify it.
                         sendEmail(email, token)
 
-                        await bot.say("Welcome backer! Just one more step to access the backer-exclusive channels. "
+                        await ctx.send("Welcome backer! Just one more step to access the backer-exclusive channels. "
                                       "Please, check your email for the verification code we just sent you (please "
                                       "check your spam folder too just in case) and send "
                                       "me back the following command:\r\r"
@@ -146,11 +149,10 @@ async def backer_mail(ctx, email: str):
                 cursor.close()
                 mariadb.close()
         else:
-            await bot.say("The email address looks like it's invalid. "
+            await bot.send("The email address looks like it's invalid. "
                           "Please, make sure you enter a valid email address.")
     else:
-        await bot.delete_message(ctx.message)
-        await bot.send_message(ctx.message.author, "That command only works on private message. "
+        await ctx.send(ctx.message.author, "That command only works on private message. "
                                                    "Please send me the command again.")
 
 

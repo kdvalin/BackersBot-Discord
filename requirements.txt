@@ -4,5 +4,5 @@ python_dateutil >= 2.5.3
 setuptools >= 21.0.0
 urllib3 >= 1.15.1
 requests>=2.23
-discord.py==0.16.12
+discord.py==1.7.3
 PyMySQL==0.9.2
