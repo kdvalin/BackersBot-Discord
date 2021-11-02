@@ -1,6 +1,8 @@
 #!/usr/bin/python
 
 import discord
+from discord import message
+from discord.errors import HTTPException
 from discord.ext import commands
 import logging
 
@@ -158,11 +160,11 @@ async def backer_mail(ctx: commands.Context, email: str):
 
 
 @bot.command(pass_context=True)
-async def backer_verify(ctx, email: str, token: str):
-    log_command(ctx.message.author, "backer_verify", email, token)
+async def backer_verify(ctx: commands.Context, email: str, token: str):
+    log_command(ctx.author, "backer_verify", email, token)
 
     # Only works if we're on a private message
-    if ctx.message.channel.is_private:
+    if isinstance(ctx.channel, discord.DMChannel):
         # Connect to the database and check if the email-token is correct
         mariadb = db_connect()
 
@@ -175,40 +177,44 @@ async def backer_verify(ctx, email: str, token: str):
 
                 if result is None:
                     # User doesn't exists in the database. Throw an error.
-                    await bot.say("The combination of user and verification code doesn't exist. "
+                    await ctx.send("The combination of user and verification code doesn't exist. "
                                   "Please, make sure you've entered the right email and code.\r\r")
-                elif result["discord_user_id"] == ctx.message.author.id:
-                    # The user is already registered
-                    server = bot.get_server(id=bot_config.server_id)
-                    server_member = discord.utils.get(server.members, id=ctx.message.author.id)
-                    if server_member is not None:
-                        server_role = discord.utils.get(server.roles, id=result["role_id"])
-                        await bot.add_roles(server_member, server_role)
-
-                    await bot.say("You've already been confirmed as a backer.")
                 elif result["discord_user_id"] is not None:
-                    # Someone already registered this email.
-                    await bot.say("It looks like this email has already been registered by another user.")
+                    if int(result["discord_user_id"]) == ctx.author.id:
+                        # The user is already registered
+                        await ctx.send("You've already been confirmed as a backer.")
+                    else:
+                        # Someone already registered this email.
+                        await ctx.send("It looks like this email has already been registered by another user.")
                 else:
                     # Check if the user has joined server
-                    server = bot.get_server(id=bot_config.server_id)
-                    server_member = discord.utils.get(server.members, id=ctx.message.author.id)
-                    if server_member is not None:
+                    server = await bot.fetch_guild(bot_config.server_id)
+                    user: discord.Member = None
+                    try:
+                        user = await server.fetch_member(ctx.author.id)
+                    except discord.HTTPException:
+                        pass
+                    except discord.Forbidden:
+                        ctx.send("I cannot access the server member list, please contact the server admin")
+                        return
+
+                    if user is not None:
                         # Update the database to register this user as taken
                         cursor.execute("UPDATE `backers` SET `discord_user_id`=%s"
                                        " WHERE `email`=%s AND `verification_code`=%s",
                                        (ctx.message.author.id, email, token))
                         mariadb.commit()
+                        roles = await server.fetch_roles()
+                        server_role =  discord.utils.get(roles, id=int(result["role_id"]))
+                        logging.info(server_role)
+                        await user.add_roles(server_role)
 
-                        server_role = discord.utils.get(server.roles, id=result["role_id"])
-
-                        await bot.add_roles(server_member, server_role)
-                        await bot.say(
+                        await ctx.send(
                             "Congratulations! You just completed the process and you've been confirmed as "
-                            "a **{0}** tier backer. Now you have access to the private channels."
+                            "a backer. Now you have access to the private channels."
                             .format(server_role.name))
                     else:
-                        await bot.say(
+                        await ctx.send(
                             "You haven't joined our Discord server! You should join it first and then come "
                             "back and run the command again.\r\r"
                             "Please, join the server here: {0}".format(bot_config.server_invite_link))
@@ -216,9 +222,9 @@ async def backer_verify(ctx, email: str, token: str):
             cursor.close()
             mariadb.close()
     else:
-        await bot.delete_message(ctx.message)
-        await bot.send_message(ctx.message.author, "That command only works on private message. "
-                                                   "Please send me the command again.")
+        await ctx.message.delete()
+        await ctx.send("{0} That command only works on private message. "
+                            "Please DM me the command.".format(ctx.author.mention))
 # endregion
 
 
@@ -256,6 +262,9 @@ def db_connect():
 def generate_random_string(size=20, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
 # endregion
+
+def get_user(server: discord.Guild, id) -> discord.Member:
+    return server.get_member(id)
 
 
 if __name__ == '__main__':
